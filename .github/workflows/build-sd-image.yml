@@ -111,16 +111,16 @@ jobs:
         run: |
           OVERLAY=sysdrv/tools/board/buildroot/overlay
 
-          # 复制 init 脚本
-          cp sysdrv/tools/board/buildroot/overlay/etc/init.d/S85onekvm /tmp/onekvm-pkg/etc/init.d/ 2>/dev/null || true
-
-          # 复制到 overlay
+          # 复制文件到 overlay
           cp -a /tmp/onekvm-pkg/usr $OVERLAY/ 2>/dev/null || true
           cp -a /tmp/onekvm-pkg/etc/ssl $OVERLAY/etc/ 2>/dev/null || true
-          cp /tmp/onekvm-pkg/etc/init.d/S85onekvm $OVERLAY/etc/init.d/ 2>/dev/null || true
+
+          # 确保执行权限（Buildroot 保留文件权限）
+          chmod +x $OVERLAY/etc/init.d/S85onekvm
+          chmod +x $OVERLAY/usr/bin/one-kvm
 
           echo "=== Overlay ==="
-          find $OVERLAY -type f | sort
+          find $OVERLAY -type f -exec ls -la {} \;
 
       - name: 处理 dl 缓存目录（空目录会导致 buildroot 下载失败）
         run: |
