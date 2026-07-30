@@ -1,14 +1,12 @@
-name: Build One-KVM Overlay Package
+name: Build SD Card Image with One-KVM
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-onekvm:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -30,22 +28,24 @@ jobs:
 
       - name: 交叉编译 One-KVM ARMv7
         run: |
+          cd /tmp/onekvm
           export CARGO_BUILD_RUSTFLAGS="-C lto=off -C codegen-units=4"
-          cd /tmp/onekvm && ./build/build-images.sh armv7
+          ./build/build-images.sh armv7
 
-      - name: 打包部署文件
+      - name: 打包 One-KVM + 运行时库
         shell: bash
         run: |
-          mkdir -p pkg/usr/bin pkg/usr/lib/one-kvm-libs pkg/etc/ssl/certs pkg/etc/init.d
-
           ONEKVM=/tmp/onekvm
+          mkdir -p pkg/usr/bin pkg/usr/lib/one-kvm-libs pkg/etc/ssl/certs
+
           BIN=$ONEKVM/target/armv7-unknown-linux-gnueabihf/release/one-kvm
           cp $BIN pkg/usr/bin/
-          cp sysdrv/tools/board/buildroot/overlay/etc/init.d/S85onekvm pkg/etc/init.d/
 
-          # 提取 glibc 运行时库（板子是 uClibc）
+          # 分析依赖
           readelf -d $BIN | grep NEEDED | awk '{print $NF}' | tr -d '[]' > /tmp/needed.txt
+          cat /tmp/needed.txt
 
+          # 配置 armhf apt 源
           sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
           sudo rm -f /etc/apt/sources.list.d/ubuntu-*.list /etc/apt/sources.list.d/ports-*.list 2>/dev/null || true
           sudo dpkg --add-architecture armhf
@@ -73,8 +73,7 @@ jobs:
           done < /tmp/needed.txt
           PKGS=$(echo $PKGS | tr ' ' '\n' | sort -u | tr '\n' ' ')
 
-          sudo apt-get install -y -qq $PKGS ca-certificates
-          sudo apt-get install -y -qq binutils-arm-linux-gnueabihf 2>/dev/null || true
+          sudo apt-get install -y -qq $PKGS ca-certificates binutils-arm-linux-gnueabihf
 
           L=/lib/arm-linux-gnueabihf UL=/usr/lib/arm-linux-gnueabihf
           while read -r so; do
@@ -86,25 +85,87 @@ jobs:
           arm-linux-gnueabihf-strip pkg/usr/lib/one-kvm-libs/*.so* 2>/dev/null || true
           cp /etc/ssl/certs/ca-certificates.crt pkg/etc/ssl/certs/
 
-          # 一键安装脚本
-          cat > pkg/install.sh << 'SCRIPT'
-          #!/bin/sh
-          set -e
-          echo "Installing One-KVM to rootfs..."
-          cp -a usr/* /usr/
-          cp -a etc/ssl/* /etc/ssl/ 2>/dev/null || true
-          cp etc/init.d/S85onekvm /etc/init.d/
-          chmod +x /usr/bin/one-kvm /etc/init.d/S85onekvm
-          mkdir -p /var/lib/one-kvm
-          echo "Done. Reboot to auto-start, or run: /etc/init.d/S85onekvm start"
-          SCRIPT
-          chmod +x pkg/install.sh
-
-          echo "=== Package contents ==="
+          echo "=== Package ==="
           find pkg -type f | sort
 
       - uses: actions/upload-artifact@v4
         with:
-          name: onekvm-rootfs-package
+          name: onekvm-overlay
           path: pkg/
-          retention-days: 90
+          retention-days: 1
+
+  build-image:
+    needs: build-onekvm
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: onekvm-overlay
+          path: /tmp/onekvm-pkg
+
+      - name: 集成到 Buildroot overlay
+        run: |
+          OVERLAY=sysdrv/tools/board/buildroot/overlay
+
+          # 复制 init 脚本
+          cp sysdrv/tools/board/buildroot/overlay/etc/init.d/S85onekvm /tmp/onekvm-pkg/etc/init.d/ 2>/dev/null || true
+
+          # 复制到 overlay
+          cp -a /tmp/onekvm-pkg/usr $OVERLAY/ 2>/dev/null || true
+          cp -a /tmp/onekvm-pkg/etc/ssl $OVERLAY/etc/ 2>/dev/null || true
+          cp /tmp/onekvm-pkg/etc/init.d/S85onekvm $OVERLAY/etc/init.d/ 2>/dev/null || true
+
+          echo "=== Overlay ==="
+          find $OVERLAY -type f | sort
+
+      - name: 处理 dl 缓存目录（空目录会导致 buildroot 下载失败）
+        run: |
+          # dl submodule 拉不到（野火内网GitLab），删除它以让 buildroot 从公网下载
+          rm -rf sysdrv/source/buildroot/dl
+          mkdir -p sysdrv/source/buildroot/dl
+
+      - name: 安装 SDK 编译依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential bc bison flex libssl-dev libncurses-dev \
+            u-boot-tools device-tree-compiler python3 cpio rsync unzip wget file \
+            swig python3-dev libpython3-dev
+
+      - name: 编译 LubanCat 完整镜像
+        run: |
+          cp project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk .BoardConfig.mk
+          chmod +x build.sh
+          export RK_BUILD_VERSION_TYPE=RELEASE
+          ./build.sh 2>&1 | tee build.log
+
+      - name: 上传编译日志（调试用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 3
+
+      - name: 检查产物
+        run: |
+          echo "=== output/image/ ==="
+          ls -lh output/image/ 2>/dev/null || echo "(empty)"
+          echo "=== output/out/sysdrv_out/ ==="
+          ls -lh output/out/sysdrv_out/ 2>/dev/null || echo "(empty)"
+          echo "=== find images ==="
+          find output -name "*.img" -o -name "rootfs.*" 2>/dev/null | head -20
+
+      - name: 上传 SD 卡镜像
+        uses: actions/upload-artifact@v4
+        with:
+          name: lubancat-rv06-sd-image
+          path: |
+            output/image/*.img
+            output/image/*.zip
+            output/out/sysdrv_out/rootfs.*
+          retention-days: 7
