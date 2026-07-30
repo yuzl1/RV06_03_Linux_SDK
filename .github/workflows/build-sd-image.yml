@@ -178,12 +178,47 @@ jobs:
           echo "=== find images ==="
           find output -name "*.img" -o -name "rootfs.*" 2>/dev/null | head -20
 
-      - name: 上传 SD 卡镜像
+      - name: 打包镜像
+        run: |
+          cd output/image
+          zip -j lubancat-rv06-onekvm.zip *.img
+          ls -lh lubancat-rv06-onekvm.zip
+
+      - name: 上传 Artifact（临时）
         uses: actions/upload-artifact@v4
         with:
           name: lubancat-rv06-sd-image
-          path: |
-            output/image/*.img
-            output/image/*.zip
-            output/out/sysdrv_out/rootfs.*
+          path: output/image/lubancat-rv06-onekvm.zip
           retention-days: 7
+
+      - name: 发布 Release（永久保存）
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "LubanCat-RV06 One-KVM 镜像"
+          tag_name: "image-${{ github.run_number }}"
+          body: |
+            ## LubanCat-RV06 + One-KVM SD 卡镜像
+
+            自动构建于: ${{ github.event.repository.updated_at }}
+
+            ### 文件说明
+            | 文件 | 说明 |
+            |------|------|
+            | update.img | 完整固件，瑞芯微工具一键烧录 |
+            | rootfs.img | Buildroot 根文件系统 |
+            | boot.img | Linux 内核 + 设备树 |
+            | uboot.img | U-Boot 引导程序 |
+            | env.img | U-Boot 环境变量 |
+            | idblock.img | ID Block |
+
+            ### 使用
+            1. 下载 `lubancat-rv06-onekvm.zip`
+            2. 解压后用瑞芯微工具烧录 `update.img`
+            3. 上电后访问 `http://<板子IP>:8080`
+
+            ### 默认配置
+            - 固定 MAC: `42:83:de:86:af:fd`
+            - 固定 IP: 在路由器上设置 MAC 绑定
+            - SSH: root 无密码
+          files: output/image/lubancat-rv06-onekvm.zip
+          generate_release_notes: false
