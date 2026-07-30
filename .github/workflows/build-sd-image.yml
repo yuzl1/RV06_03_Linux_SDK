@@ -134,7 +134,8 @@ jobs:
           sudo apt-get install -y -qq \
             build-essential bc bison flex libssl-dev libncurses-dev \
             u-boot-tools device-tree-compiler python3 cpio rsync unzip wget file \
-            swig python3-dev libpython3-dev
+            swig python3-dev libpython3-dev gperf cmake meson \
+            autoconf automake libtool gettext texinfo help2man
 
       - name: 初始化工具链
         run: |
