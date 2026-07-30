@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# One-KVM IP-KVM Service for LubanCat-RV06 Buildroot
+# S85 = 在网络/SSH(P50)之后启动
+#
+
+NAME=one-kvm
+BIN=/usr/bin/one-kvm
+LIB_DIR=/usr/lib/one-kvm-libs
+LD_SO=$LIB_DIR/ld-linux-armhf.so.3
+DATA_DIR=/var/lib/one-kvm
+PID_FILE=/var/run/one-kvm.pid
+LOG_FILE=/var/log/one-kvm.log
+
+export LD_LIBRARY_PATH=$LIB_DIR
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+start() {
+    echo "Starting $NAME..."
+    start-stop-daemon -S -b -m -p $PID_FILE \
+        -x $LD_SO -- $BIN -d $DATA_DIR -p 8080 -l info \
+        >> $LOG_FILE 2>&1
+    echo "done"
+}
+
+stop() {
+    echo "Stopping $NAME..."
+    start-stop-daemon -K -p $PID_FILE 2>/dev/null
+    rm -f $PID_FILE
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+case "$1" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) restart ;;
+    *)       echo "Usage: $0 {start|stop|restart}" ;;
+esac
