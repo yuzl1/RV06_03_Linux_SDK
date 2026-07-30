@@ -3,6 +3,10 @@ name: Build SD Card Image with One-KVM
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build-onekvm:
     runs-on: ubuntu-22.04
