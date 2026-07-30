@@ -1,0 +1,108 @@
+#!/bin/sh
+#
+# SG90 舵机控制 — CLI 参数版
+# 所有参数通过命令行指定, 方便在 One-KVM Web UI 中配置
+#
+# 接线参考 (LubanCat-RV06 40pin):
+#   舵机橙线(PWM信号) → Pin 12 = PWM7 → 对应 --chip 0 --channel 0
+#   舵机红线(5V电源)  → Pin 2 或 4
+#   舵机棕线(GND地)   → Pin 6,9,14,20,25,30 任一
+#
+# 用法:
+#   servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 short
+#   servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 long
+#
+# 调试:
+#   servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 test 1500000
+#   (手动设脉宽 1500000ns = 1.5ms, 观察舵机位置, 调整 --rest / --press)
+
+set -e
+
+# ============ 默认值 ============
+CHIP=0
+CHANNEL=0
+PERIOD=20000000      # 50Hz, SG90 固定值, 一般不改
+REST_NS=500000       # 归位脉宽 0.5ms (0°)
+PRESS_NS=2000000     # 按下脉宽 2.0ms (~90°)
+SHORT_S=0.5          # 短按秒数
+LONG_S=5             # 长按秒数
+ACTION=""
+
+# ============ 解析参数 ============
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --chip)    CHIP="$2"; shift 2 ;;
+        --channel) CHANNEL="$2"; shift 2 ;;
+        --period)  PERIOD="$2"; shift 2 ;;
+        --rest)    REST_NS="$2"; shift 2 ;;
+        --press)   PRESS_NS="$2"; shift 2 ;;
+        --short-s) SHORT_S="$2"; shift 2 ;;
+        --long-s)  LONG_S="$2"; shift 2 ;;
+        short|long|test|init|status)
+            ACTION="$1"; shift ;;
+        *)
+            echo "未知参数: $1"
+            echo "用法: $0 --chip <n> --channel <n> --rest <ns> --press <ns> {short|long|test <ns>|init|status}"
+            exit 1 ;;
+    esac
+done
+
+[ -z "$ACTION" ] && { echo "缺少操作: short|long|test|init|status"; exit 1; }
+
+PWM_PATH="/sys/class/pwm/pwmchip${CHIP}/pwm${CHANNEL}"
+
+# ============ 初始化 PWM ============
+init_pwm() {
+    if [ ! -d "$PWM_PATH" ]; then
+        echo "${CHANNEL}" > "/sys/class/pwm/pwmchip${CHIP}/export" 2>/dev/null || true
+        sleep 0.1
+    fi
+    if [ ! -d "$PWM_PATH" ]; then
+        echo "错误: PWM ${PWM_PATH} 不存在"
+        echo "可用芯片: $(ls /sys/class/pwm/ 2>/dev/null)"
+        exit 1
+    fi
+    echo "$PERIOD"  > "$PWM_PATH/period"      2>/dev/null || true
+    echo "$REST_NS" > "$PWM_PATH/duty_cycle"  2>/dev/null || true
+    echo 1          > "$PWM_PATH/enable"       2>/dev/null || true
+}
+
+# ============ 设置脉宽 ============
+set_duty() {
+    echo "$1" > "$PWM_PATH/duty_cycle" 2>/dev/null || {
+        echo "错误: 无法设置 duty_cycle, 先执行 init"
+        exit 1
+    }
+}
+
+# ============ 执行动作 ============
+case "$ACTION" in
+    init)
+        init_pwm
+        echo "PWM 已初始化: $PWM_PATH  period=${PERIOD}ns  rest=${REST_NS}ns"
+        ;;
+    status)
+        d=$(cat "$PWM_PATH/duty_cycle" 2>/dev/null || echo "未知")
+        echo "PWM: $PWM_PATH  duty=${d}ns  period=$(cat "$PWM_PATH/period" 2>/dev/null)ns"
+        ;;
+    test)
+        [ -z "$1" ] && { echo "test 需要指定脉宽值(ns), 例如: test 1500000"; exit 1; }
+        init_pwm
+        set_duty "$1"
+        echo "测试脉宽: ${1}ns ($(($1 / 1000))us) — Ctrl+C 停止"
+        ;;
+    short)
+        init_pwm
+        set_duty "$PRESS_NS"
+        sleep "$SHORT_S"
+        set_duty "$REST_NS"
+        echo "短按完成 (${SHORT_S}s, press=${PRESS_NS}ns rest=${REST_NS}ns)"
+        ;;
+    long)
+        init_pwm
+        set_duty "$PRESS_NS"
+        sleep "$LONG_S"
+        set_duty "$REST_NS"
+        echo "长按完成 (${LONG_S}s, press=${PRESS_NS}ns rest=${REST_NS}ns)"
+        ;;
+esac

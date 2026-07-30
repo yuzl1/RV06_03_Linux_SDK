@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 克隆 One-KVM 源码
-        run: git clone https://github.com/yuzl1/One-KVM.git --depth=1 /tmp/onekvm
+        run: git clone https://github.com/yuzl1/One-KVM.git --depth=1 -b sg90-atx /tmp/onekvm
 
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
@@ -125,6 +125,7 @@ jobs:
           chmod +x $OVERLAY/etc/init.d/S85onekvm
           chmod +x $OVERLAY/etc/init.d/S86ttyd 2>/dev/null || true
           chmod +x $OVERLAY/etc/init.d/S38fixmac
+          chmod +x $OVERLAY/usr/local/bin/servo-ctrl 2>/dev/null || true
           chmod +x $OVERLAY/usr/bin/one-kvm
           chmod +x $OVERLAY/usr/lib/one-kvm-libs/ld-linux-armhf.so.3
 
