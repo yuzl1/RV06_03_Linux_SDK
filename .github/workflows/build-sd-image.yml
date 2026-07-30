@@ -136,6 +136,19 @@ jobs:
             u-boot-tools device-tree-compiler python3 cpio rsync unzip wget file \
             swig python3-dev libpython3-dev
 
+      - name: 初始化工具链
+        run: |
+          TOOLCHAIN_DIR=tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
+          # 确保工具链二进制可执行
+          chmod +x $TOOLCHAIN_DIR/bin/*
+          # 检查依赖
+          ldd $TOOLCHAIN_DIR/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc || true
+          # 安装可能缺失的库
+          sudo apt-get install -y -qq libmpfr6 libmpc3 libgmp10 2>/dev/null || true
+          # 测试 gcc
+          export PATH=$PWD/$TOOLCHAIN_DIR/bin:$PATH
+          arm-rockchip830-linux-uclibcgnueabihf-gcc --version
+
       - name: 编译 LubanCat 完整镜像
         run: |
           cp project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk .BoardConfig.mk
