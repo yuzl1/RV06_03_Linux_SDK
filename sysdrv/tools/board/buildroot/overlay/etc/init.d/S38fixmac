@@ -4,7 +4,7 @@
 # S38 = 在网络启动(S40)之前
 #
 
-FIXED_MAC="38:7a:cc:ff:ee:01"
+FIXED_MAC="42:83:de:86:af:fd"
 
 # 如果 MAC 不是固定的那个，就改掉
 current=$(ip link show eth0 2>/dev/null | grep ether | awk '{print $2}')
