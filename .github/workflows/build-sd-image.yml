@@ -83,6 +83,8 @@ jobs:
           done < /tmp/needed.txt
 
           arm-linux-gnueabihf-strip pkg/usr/lib/one-kvm-libs/*.so* 2>/dev/null || true
+          chmod +x pkg/usr/lib/one-kvm-libs/ld-linux-armhf.so.3
+          chmod +x pkg/usr/bin/one-kvm
           cp /etc/ssl/certs/ca-certificates.crt pkg/etc/ssl/certs/
 
           echo "=== Package ==="
@@ -118,6 +120,7 @@ jobs:
           # 确保执行权限（Buildroot 保留文件权限）
           chmod +x $OVERLAY/etc/init.d/S85onekvm
           chmod +x $OVERLAY/usr/bin/one-kvm
+          chmod +x $OVERLAY/usr/lib/one-kvm-libs/ld-linux-armhf.so.3
 
           echo "=== Overlay ==="
           find $OVERLAY -type f -exec ls -la {} \;
