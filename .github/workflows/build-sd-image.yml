@@ -151,7 +151,7 @@ jobs:
 
       - name: 编译 LubanCat 完整镜像
         run: |
-          cp project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk .BoardConfig.mk
+          ln -sf project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk .BoardConfig.mk
           chmod +x build.sh
           export RK_BUILD_VERSION_TYPE=RELEASE
           ./build.sh 2>&1 | tee build.log
