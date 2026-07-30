@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# ttyd Web 终端 — 浏览器访问板子 shell
+# S86 = 在 SSH(S50) 和 One-KVM(S85) 之后启动
+#
+
+PORT=7681
+PID_FILE=/var/run/ttyd.pid
+
+start() {
+    echo "Starting ttyd on port $PORT..."
+    /usr/bin/ttyd -p $PORT -c root:root /bin/login &
+    echo $! > $PID_FILE
+    echo "ttyd: http://$(hostname -I | awk '{print $1}'):$PORT"
+}
+
+stop() {
+    echo "Stopping ttyd..."
+    [ -f $PID_FILE ] && kill $(cat $PID_FILE) 2>/dev/null
+    rm -f $PID_FILE
+}
+
+case "$1" in
+    start) start ;;
+    stop)  stop ;;
+    restart) stop; sleep 1; start ;;
+    *) echo "Usage: $0 {start|stop|restart}" ;;
+esac

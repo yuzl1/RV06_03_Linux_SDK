@@ -123,6 +123,7 @@ jobs:
 
           # 确保执行权限（Buildroot 保留文件权限）
           chmod +x $OVERLAY/etc/init.d/S85onekvm
+          chmod +x $OVERLAY/etc/init.d/S86ttyd 2>/dev/null || true
           chmod +x $OVERLAY/etc/init.d/S38fixmac
           chmod +x $OVERLAY/usr/bin/one-kvm
           chmod +x $OVERLAY/usr/lib/one-kvm-libs/ld-linux-armhf.so.3
