@@ -1,24 +1,26 @@
-name: Build SD Card Image with One-KVM
+name: Build One-KVM Overlay Package
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  # ===== 第一阶段：编译 One-KVM =====
-  build-onekvm:
+  build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: yuzl1/One-KVM
-          ref: main
+
+      - name: 克隆 One-KVM 源码
+        run: git clone https://github.com/yuzl1/One-KVM.git --depth=1 /tmp/onekvm
 
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
 
-      - run: cd web && npm install && npm run build
+      - name: 编译 One-KVM 前端
+        run: cd /tmp/onekvm/web && npm install && npm run build
 
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: armv7-unknown-linux-gnueabihf }
@@ -26,28 +28,32 @@ jobs:
       - uses: taiki-e/install-action@v2
         with: { tool: cross }
 
-      - run: |
+      - name: 交叉编译 One-KVM ARMv7
+        run: |
           export CARGO_BUILD_RUSTFLAGS="-C lto=off -C codegen-units=4"
-          ./build/build-images.sh armv7
+          cd /tmp/onekvm && ./build/build-images.sh armv7
 
-      - name: 打包二进制 + 运行时库
+      - name: 打包部署文件
         shell: bash
         run: |
-          mkdir -p pkg/lib pkg/ssl pkg/usr/bin pkg/usr/lib/one-kvm-libs pkg/etc/ssl/certs
+          mkdir -p pkg/usr/bin pkg/usr/lib/one-kvm-libs pkg/etc/ssl/certs pkg/etc/init.d
 
-          BIN=target/armv7-unknown-linux-gnueabihf/release/one-kvm
-          cp $BIN pkg/usr/bin/one-kvm
+          ONEKVM=/tmp/onekvm
+          BIN=$ONEKVM/target/armv7-unknown-linux-gnueabihf/release/one-kvm
+          cp $BIN pkg/usr/bin/
+          cp sysdrv/tools/board/buildroot/overlay/etc/init.d/S85onekvm pkg/etc/init.d/
 
+          # 提取 glibc 运行时库（板子是 uClibc）
           readelf -d $BIN | grep NEEDED | awk '{print $NF}' | tr -d '[]' > /tmp/needed.txt
 
           sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
           sudo rm -f /etc/apt/sources.list.d/ubuntu-*.list /etc/apt/sources.list.d/ports-*.list 2>/dev/null || true
           sudo dpkg --add-architecture armhf
-          sudo tee /etc/apt/sources.list.d/armhf.list <<'SRC'
+          sudo tee /etc/apt/sources.list.d/armhf.list <<'END'
           deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
           deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
           deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
-          SRC
+          END
           sudo apt-get update -qq
 
           declare -A SO2PKG=(
@@ -70,65 +76,35 @@ jobs:
           sudo apt-get install -y -qq $PKGS ca-certificates
           sudo apt-get install -y -qq binutils-arm-linux-gnueabihf 2>/dev/null || true
 
-          L=/lib/arm-linux-gnueabihf
-          UL=/usr/lib/arm-linux-gnueabihf
+          L=/lib/arm-linux-gnueabihf UL=/usr/lib/arm-linux-gnueabihf
           while read -r so; do
-            [ -f "$L/$so" ] && cp -v "$L/$so" pkg/usr/lib/one-kvm-libs/ && continue
-            [ -f "$UL/$so" ] && cp -v "$UL/$so" pkg/usr/lib/one-kvm-libs/ && continue
+            [ -f "$L/$so" ] && cp "$L/$so" pkg/usr/lib/one-kvm-libs/ && continue
+            [ -f "$UL/$so" ] && cp "$UL/$so" pkg/usr/lib/one-kvm-libs/ && continue
             echo "  ⚠ not found: $so"
           done < /tmp/needed.txt
 
           arm-linux-gnueabihf-strip pkg/usr/lib/one-kvm-libs/*.so* 2>/dev/null || true
           cp /etc/ssl/certs/ca-certificates.crt pkg/etc/ssl/certs/
 
-          ls -lhR pkg/
+          # 一键安装脚本
+          cat > pkg/install.sh << 'SCRIPT'
+          #!/bin/sh
+          set -e
+          echo "Installing One-KVM to rootfs..."
+          cp -a usr/* /usr/
+          cp -a etc/ssl/* /etc/ssl/ 2>/dev/null || true
+          cp etc/init.d/S85onekvm /etc/init.d/
+          chmod +x /usr/bin/one-kvm /etc/init.d/S85onekvm
+          mkdir -p /var/lib/one-kvm
+          echo "Done. Reboot to auto-start, or run: /etc/init.d/S85onekvm start"
+          SCRIPT
+          chmod +x pkg/install.sh
+
+          echo "=== Package contents ==="
+          find pkg -type f | sort
 
       - uses: actions/upload-artifact@v4
         with:
-          name: onekvm-overlay
+          name: onekvm-rootfs-package
           path: pkg/
-          retention-days: 1
-
-  # ===== 第二阶段：编译 SD 卡镜像 =====
-  build-image:
-    needs: build-onekvm
-    runs-on: ubuntu-22.04
-    timeout-minutes: 360
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: onekvm-overlay
-          path: /tmp/onekvm
-
-      - name: 集成 One-KVM 到 overlay
-        run: |
-          OVERLAY=sysdrv/tools/board/buildroot/overlay
-          rm -rf $OVERLAY/usr $OVERLAY/etc/ssl  # clean
-          cp -a /tmp/onekvm/usr $OVERLAY/
-          cp -a /tmp/onekvm/etc/ssl $OVERLAY/etc/
-          echo "=== Overlay after integration ==="
-          find $OVERLAY -type f | sort
-
-      - name: 安装 SDK 编译依赖
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            build-essential bc bison flex libssl-dev libncurses-dev \
-            u-boot-tools device-tree-compiler python3 cpio rsync unzip wget file
-
-      - name: 配置板卡 + 编译
-        run: |
-          cp project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk .BoardConfig.mk
-          chmod +x build.sh
-          export RK_BUILD_VERSION_TYPE=RELEASE
-          ./build.sh 2>&1 | tee build.log
-
-      - name: 上传 SD 卡镜像
-        uses: actions/upload-artifact@v4
-        with:
-          name: lubancat-rv06-sd-image
-          path: output/image/
-          retention-days: 7
+          retention-days: 90
