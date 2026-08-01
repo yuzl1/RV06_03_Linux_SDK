@@ -38,8 +38,11 @@ while [ $# -gt 0 ]; do
         --press)   PRESS_NS="$2"; shift 2 ;;
         --short-s) SHORT_S="$2"; shift 2 ;;
         --long-s)  LONG_S="$2"; shift 2 ;;
-        short|long|test|init|status)
+        short|long|init|status)
             ACTION="$1"; shift ;;
+        test)
+            ACTION="$1"; shift
+            TEST_NS="$1"; shift ;;
         *)
             echo "未知参数: $1"
             echo "用法: $0 --chip <n> --channel <n> --rest <ns> --press <ns> {short|long|test <ns>|init|status}"
@@ -86,10 +89,10 @@ case "$ACTION" in
         echo "PWM: $PWM_PATH  duty=${d}ns  period=$(cat "$PWM_PATH/period" 2>/dev/null)ns"
         ;;
     test)
-        [ -z "$1" ] && { echo "test 需要指定脉宽值(ns), 例如: test 1500000"; exit 1; }
+        [ -z "$TEST_NS" ] && { echo "test 需要指定脉宽值(ns), 例如: test 1500000"; exit 1; }
         init_pwm
-        set_duty "$1"
-        echo "测试脉宽: ${1}ns ($(($1 / 1000))us) — Ctrl+C 停止"
+        set_duty "$TEST_NS"
+        echo "测试脉宽: ${TEST_NS}ns ($((TEST_NS / 1000))us) — 观察舵机位置, Ctrl+C 退出"
         ;;
     short)
         init_pwm
