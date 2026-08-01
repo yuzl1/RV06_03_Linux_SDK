@@ -4,85 +4,115 @@
 
 | SG90 舵机 | LubanCat-RV06 40pin | 说明 |
 |-----------|---------------------|------|
-| 橙线 (PWM信号) | Pin 12 (PWM7) | 任意 PWM 引脚均可，调试时改参数 |
-| 红线 (5V电源) | Pin 2 或 4 | 固定 5V 输出 |
-| 棕线 (GND) | Pin 6/9/14/20/25/30 | 任选一个 GND |
+| 橙线 (PWM信号) | Pin 12 (PWM7) | = pwmchip7/pwm0 |
+| 红线 (5V电源) | Pin 2 | 5V 供电 |
+| 棕线 (GND) | Pin 6 | 共地 |
 
-> 换引脚？改 `--chip` / `--channel` 参数就行，见下文。
+## 我的参数
 
-## 使用
+> ⚠️ 每个舵机有效范围不同，下表是我的实测值：
 
-### 1. 命令行调试
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `--chip` | 7 | Pin12 = PWM7 → pwmchip7 |
+| `--channel` | 0 | pwm0 |
+| `--rest` | **3000000** (3.0ms) | 归位：舵机臂平着，远离按钮 |
+| `--press` | **2650000** (2.65ms) | 按下：舵机臂顶下去，刚好按下按钮 |
+| 有效范围 | 1200000 ~ 3000000 | 超出没反应 |
+
+### One-KVM Web UI 配置
+
+```
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000
+```
+
+## 调试流程（我的实际过程）
+
+### 1. 找 PWM 芯片
 
 ```bash
-# 初始化 PWM
-servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 init
-
-# 测试单个角度 (脉宽单位: 纳秒)
-servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 test 1500000
-
-# 短按 (0.5秒)
-servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 short
-
-# 长按 (5秒, 强制关机)
-servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000 long
-
-# 查看当前状态
-servo-ctrl --chip 0 --channel 0 status
+ls /sys/class/pwm/
+# 输出: pwmchip0  pwmchip7
 ```
 
-### 2. One-KVM Web UI 配置
+Pin12 是 PWM7，对应 pwmchip7。
 
-Settings → ATX → 驱动类型选 **"脚本命令"** → 设备填：
+### 2. 导出 PWM 通道
 
+```bash
+echo 0 > /sys/class/pwm/pwmchip7/export
+ls /sys/class/pwm/pwmchip7/    # 确认 pwm0 出现
+#可以看到出现了两个PWM设备，分别是pwmchip0和pwmchip7，pwmchip0是屏幕背光，pwmchip7是30pin排针上的PWM接口。 我用的板子官方说明
 ```
-/usr/local/bin/servo-ctrl --chip 0 --channel 0 --rest 500000 --press 2000000
+
+### 3. 扫描有效脉宽范围
+
+```bash
+# 扫一圈看舵机在哪个范围有反应
+while true; do
+    for d in 500000 1000000 1500000 2000000 2500000 2000000 1500000 1000000; do
+        echo $d > /sys/class/pwm/pwmchip7/pwm0/duty_cycle
+        sleep 0.3
+    done
+done
+# Ctrl+C 停止，观察有效范围
 ```
 
-保存后在 Web UI 电源按钮区域点击短按/长按。
+我的有效范围：**1200000 ~ 3000000**
 
-## 参数说明
+- 小于 1200000：舵机不动
+- 1200000 ~ 3000000：舵机转动
+- 大于 3000000：舵机不动（已到极限）
 
-| 参数 | 默认值 | 含义 | 何时修改 |
-|------|--------|------|---------|
-| `--chip 0` | 0 | PWM 芯片号 (`ls /sys/class/pwm/`) | 换引脚时 |
-| `--channel 0` | 0 | PWM 通道号 | 换引脚时 |
-| `--period 20000000` | 20ms (50Hz) | PWM 周期, SG90 固定 | 不修改 |
-| `--rest 500000` | 0.5ms (0°) | 归位脉宽, 舵机离开按钮 | 角度不对时微调 |
-| `--press 2000000` | 2.0ms (~90°) | 按下脉宽, 舵机按下按钮 | 角度不对时微调 |
-| `--short-s 0.5` | 0.5 秒 | 短按持续时间 | 按需调整 |
-| `--long-s 5` | 5 秒 | 长按持续时间 | 按需调整 |
+### 4. 确定归位和按下值
 
-### 角度微调参考
-
-SG90 脉宽与角度对应关系 (50Hz):
-
-| 脉宽 (ns) | 角度 |
-|-----------|------|
-| 500000 | 0° (远离按钮) |
-| 1000000 | ~22° |
-| 1500000 | 45° (中间) |
-| 2000000 | ~90° (按下按钮) |
-| 2500000 | ~135° (超出范围) |
-
-> `--rest` 建议 500000~800000，`--press` 建议 1500000~2200000，根据实际机械位置微调。
-
-## 调试流程
-
+```bash
+# 逐步微调，找到刚好能按下按钮的值
+echo 3000000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle   # 平着（归位）
+echo 2650000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle   # 按下按钮
 ```
-1. servo-ctrl ... test 500000    → 确认归位角度, 舵机臂不碰按钮
-2. servo-ctrl ... test 1500000   → 确认中间位置
-3. servo-ctrl ... test 2000000   → 确认按下角度, 刚好按下但不大力
-4. 微调 --rest / --press 直到合适
-5. servo-ctrl ... short          → 测试完整按一次
-6. 把调试好的参数填入 One-KVM Web UI
+
+### 5. 测试短按
+
+```bash
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 init
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
+```
+
+---
+
+## 参数说明（通用）
+
+| 参数 | 含义 | 何时修改 |
+|------|------|---------|
+| `--chip N` | PWM 芯片号 (`ls /sys/class/pwm/`) | 换引脚时 |
+| `--channel N` | PWM 通道号 | 换引脚时 |
+| `--rest N` | 归位脉宽 (ns)，舵机离开按钮 | 换了舵机/固定位置时 |
+| `--press N` | 按下脉宽 (ns)，舵机按下按钮 | 换了舵机/固定位置时 |
+| `--short-s 0.5` | 短按持续时间 (秒) | 按需 |
+| `--long-s 5` | 长按持续时间 (秒) | 按需 |
+
+---
+
+## 命令行参考
+
+```bash
+# 初始化
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 init
+
+# 短按 / 长按
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 short
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 long
+#w我的笔记本 5 秒不关机手动关成 13 秒
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 --long-s 13 long
+
+# 直接写 sysfs 手动调角度（精度 1ns，任意值）
+echo 2700000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle
+echo 3000000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle
 ```
 
 ## 40pin PWM 引脚参考 (LubanCat-RV06)
 
-| 物理引脚 | 功能 | 内核 PWM 路径 (参考) |
-|----------|------|---------------------|
-| Pin 12 | PWM7 | pwmchip0/pwm0 |
-| Pin 32 | PWM0 | 需实测 |
-
-> 板上执行 `ls /sys/class/pwm/` 查看实际可用的 PWM 控制器。导出新通道: `echo 0 > /sys/class/pwm/pwmchip0/export`
+| 物理引脚 | 功能 | 实测 PWM 路径 |
+|----------|------|--------------|
+| Pin 12 | PWM7 | pwmchip7/pwm0 |
