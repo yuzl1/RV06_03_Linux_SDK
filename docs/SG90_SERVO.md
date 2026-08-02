@@ -98,13 +98,13 @@ servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
 
 ```bash
 # 初始化
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 init
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 init
 
 # 短按 / 长按
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 short
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 long
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 long
 #w我的笔记本 5 秒不关机手动关成 13 秒
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2690000 --long-s 13 long
+servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long
 
 # 直接写 sysfs 手动调角度（精度 1ns，任意值）
 echo 2700000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle
