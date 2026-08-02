@@ -23,11 +23,21 @@
 
 ### 2. 烧录
 
-解压后用瑞芯微工具烧录 `update.img`，或 dd 到 SD 卡：
+**SPI NAND 烧录**
 
-```bash
-sudo dd if=update.img of=/dev/diskX bs=4M status=progress
-```
+用瑞芯微工具（RKDevTool 或 upgrade_tool）直接烧 `update.img` 一键烧录。
+
+**SD 卡烧录**
+
+将以下文件分别烧录到对应分区（用瑞芯微工具选择对应位置）：
+
+| 文件 | 分区 |
+|------|------|
+| `idblock.img` | ID Block |
+| `uboot.img` | U-Boot |
+| `env.img` | Env |
+| `boot.img` | Boot |
+| `rootfs.img` | Rootfs |
 
 ### 3. 使用
 
