@@ -133,6 +133,39 @@ project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk
 
 ---
 
+## SG90 舵机 + ATX Script 驱动 (sg90-atx 分支)
+
+### 接线
+
+| SG90 | RV1106 40pin |
+|------|-------------|
+| 橙线(PWM) | Pin 12 (PWM7 = pwmchip7/pwm0) |
+| 红线(5V) | Pin 2 |
+| 棕线(GND) | Pin 6 |
+
+### Web UI 配置
+
+Settings → ATX → 驱动类型选"脚本命令"：
+
+| 输入框 | 命令 |
+|--------|------|
+| 电源按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short` |
+| 复位按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long` |
+
+### 调试
+
+```bash
+# 手动测试
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long
+
+# 直接调 PWM
+echo 3000000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle   # 归位
+echo 2650000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle   # 按下
+```
+
+---
+
 ## 相关仓库
 
 | 仓库 | 说明 |
