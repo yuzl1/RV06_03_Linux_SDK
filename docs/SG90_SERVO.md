@@ -22,9 +22,14 @@
 
 ### One-KVM Web UI 配置
 
-```
-/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000
-```
+Settings → ATX → 驱动类型选 **"脚本命令"**：
+
+| 输入框 | 命令 |
+|--------|------|
+| 电源按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short` |
+| 复位按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long` |
+
+> ⚠️ 必须用完整路径 `/usr/local/bin/servo-ctrl`，不能用相对路径 `servo-ctrl`
 
 ## 调试流程（我的实际过程）
 
@@ -98,13 +103,13 @@ servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
 
 ```bash
 # 初始化
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 init
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 init
 
 # 短按 / 长按
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 long
-#w我的笔记本 5 秒不关机手动关成 13 秒
-servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 long
+# 我的笔记本 5 秒不关机，手动改成 13 秒
+/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long
 
 # 直接写 sysfs 手动调角度（精度 1ns，任意值）
 echo 2700000 > /sys/class/pwm/pwmchip7/pwm0/duty_cycle
