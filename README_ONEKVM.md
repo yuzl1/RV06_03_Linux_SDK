@@ -1,33 +1,29 @@
 # LubanCat-RV06 + One-KVM 集成镜像
 
-> 野火 LubanCat-RV06 (RV1106) Buildroot 镜像，内置 One-KVM IP-KVM 服务，烧录即用。
+> 野火 LubanCat-RV06 (RV1106) 定制 Buildroot 镜像，内置 One-KVM IP-KVM 服务，烧录即用。
+
+## 功能
+
+| 功能 | 说明 |
+|------|------|
+| One-KVM | IP-KVM Web UI，USB 采集卡画面 + 远程键盘鼠标 |
+| ttyd | Web 终端 (端口 7681)，浏览器直接操作 shell |
+| SG90 舵机 | ATX Script 驱动，远程控制笔记本电源按钮 |
+| 固定 MAC | `42:83:de:86:af:fd`，刷机 IP 不变 |
 
 ## 快速开始
 
-### 1. 下载镜像
+### 1. 获取镜像
 
-从 GitHub Actions 下载最新构建产物：
+从 GitHub Actions 或 Releases 下载：
 
-> https://github.com/yuzl1/RV06_03_Linux_SDK/actions → 最新成功运行 → Artifacts → `lubancat-rv06-sd-image`
+> https://github.com/yuzl1/RV06_03_Linux_SDK/actions → 最新构建 → `lubancat-rv06-sd-image`
 
-解压后获取：
-```
-image/
-├── boot.img       kernel + device tree
-├── env.img        uboot 环境变量
-├── idblock.img    ID block
-├── rootfs.img     Buildroot 根文件系统 (含 One-KVM)
-├── uboot.img      U-Boot
-└── update.img     完整固件 (一键烧录)
-```
+或 [Releases](https://github.com/yuzl1/RV06_03_Linux_SDK/releases) 下载永久版本。
 
 ### 2. 烧录
 
-**方式一：瑞芯微工具烧录 update.img**
-
-用 RKDevTool 或 upgrade_tool 直接烧 `update.img`。
-
-**方式二：SD 卡 dd 烧录**
+解压后用瑞芯微工具烧录 `update.img`，或 dd 到 SD 卡：
 
 ```bash
 sudo dd if=update.img of=/dev/diskX bs=4M status=progress
@@ -35,108 +31,49 @@ sudo dd if=update.img of=/dev/diskX bs=4M status=progress
 
 ### 3. 使用
 
-板子上电后，One-KVM 自动启动。浏览器访问：
-
-```
-http://<板子IP>:8080
-```
-
-默认无用户，首次访问在 Web UI 中创建管理员账号。
-
----
-
-## 板子信息
-
-| 项目 | 详情 |
+| 服务 | 地址 |
 |------|------|
-| **型号** | LubanCat-RV06 |
-| **SoC** | Rockchip RV1106 (ARMv7-A) |
-| **系统** | Buildroot 2024.02.10 |
-| **默认密码** | root (无密码，SSH 可登录) |
-| **One-KVM 端口** | 8080 |
-| **MAC 地址** | 固定为 `42:83:de:86:af:fd` |
+| One-KVM | `http://<板子IP>:8080` |
+| ttyd 终端 | `http://<板子IP>:7681` (root/root) |
+| SSH | `ssh root@<板子IP>` (无密码) |
 
----
+## SG90 舵机配置
 
-## 自启动服务
+详见 [docs/SG90_SERVO.md](docs/SG90_SERVO.md)（sg90-atx 分支）。
 
-```
-/etc/init.d/
-├── S38fixmac    ← 固定 eth0 MAC (网络启动前)
-├── S40network   ← 网络配置
-├── S50sshd      ← SSH 服务
-└── S85onekvm    ← One-KVM (网络就绪后)
-```
+One-KVM Web UI → Settings → ATX → 驱动类型选"脚本命令"：
 
-### 管理 One-KVM
+| 输入框 | 命令 |
+|--------|------|
+| 电源按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 short` |
+| 复位按钮 | `/usr/local/bin/servo-ctrl --chip 7 --channel 0 --rest 3000000 --press 2650000 --long-s 13 long` |
+
+## 管理
 
 ```bash
-/etc/init.d/S85onekvm start     # 启动
-/etc/init.d/S85onekvm stop      # 停止
-/etc/init.d/S85onekvm restart   # 重启
+/etc/init.d/S85onekvm start|stop|restart   # One-KVM 服务
+/etc/init.d/S86ttyd start|stop|restart     # ttyd 终端
+cat /var/log/one-kvm.log                    # 日志
 ```
 
-### 查看日志
+## 分支
+
+| 分支 | 说明 |
+|------|------|
+| `main` | 稳定版（ttyd + One-KVM 基础集成） |
+| `sg90-atx` | SG90 舵机 + ATX Script 驱动 |
+
+## 编译
 
 ```bash
-cat /var/log/one-kvm.log
+# GitHub Actions 自动编译，本地编译需要 Linux + Buildroot SDK
+./build.sh
+# 产物在 output/image/
 ```
-
----
-
-## 文件布局
-
-```
-/usr/bin/one-kvm                     ← One-KVM 主程序
-/usr/lib/one-kvm-libs/               ← glibc 运行时库 (板子用 uClibc)
-/usr/lib/one-kvm-libs/ld-linux-armhf.so.3  ← glibc 动态链接器
-/etc/ssl/certs/ca-certificates.crt   ← TLS CA 证书
-/etc/init.d/S85onekvm                ← 启动脚本
-/etc/init.d/S38fixmac                ← MAC 固定脚本
-/var/lib/one-kvm/                    ← 数据目录 (数据库+配置)
-```
-
----
-
-## CI/CD 自动构建
-
-推送代码到 main 分支后，GitHub Actions 自动：
-
-```
-Job 1: 编译 One-KVM (armv7) + 提取 glibc 运行时库 (~30min)
-Job 2: 集成到 Buildroot overlay → 编译完整 SD 卡镜像 (~2h)
-产物: lubancat-rv06-sd-image.zip
-```
-
----
-
-## 自定义
-
-### 修改 One-KVM 版本
-
-更新 `.github/workflows/build-sd-image.yml` 中 clone 的 repo 地址或分支。
-
-### 修改固定 MAC
-
-编辑 `sysdrv/tools/board/buildroot/overlay/etc/init.d/S38fixmac` 中的 `FIXED_MAC`。
-
-### 修改 One-KVM 端口
-
-编辑 `sysdrv/tools/board/buildroot/overlay/etc/init.d/S85onekvm` 中的 `-p 8080`。
-
-### 修改 Wi-Fi / USB 设备配置
-
-编辑板卡配置：
-```
-project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-NONE-RV1106_LubanCat-RV06.mk
-```
-
----
 
 ## 相关仓库
 
 | 仓库 | 说明 |
 |------|------|
-| [yuzl1/One-KVM](https://github.com/yuzl1/One-KVM) | One-KVM ARMv7 编译 |
+| [yuzl1/One-KVM](https://github.com/yuzl1/One-KVM) | One-KVM ARMv7 + ATX Script 后端 |
 | [LubanCat/RV06_03_Linux_SDK](https://github.com/LubanCat/RV06_03_Linux_SDK) | 上游 SDK |
-| [mofeng-git/One-KVM](https://github.com/mofeng-git/One-KVM) | One-KVM 上游 |
